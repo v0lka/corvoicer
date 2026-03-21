@@ -1,0 +1,28 @@
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+  tcp_port: 7881
+  node_ip: 192.168.1.53
+  # STUN disabled for local LAN testing (hosts on same network don't need NAT traversal)
+  stun_servers: []
+
+redis:
+  address: localhost:6379
+
+ingress:
+  rtmp_base_url: 'rtmp://192.168.1.53:1935/live'
+  # Ingress runs on HTTP (use reverse proxy for HTTPS in production)
+  whip_base_url: 'http://192.168.1.53:7985/w'
+
+keys:
+  devkey: "secret-dev-key-min-32-characters!!"
+
+logging:
+  level: info
+
+room:
+  max_participants: 16
+  empty_timeout: 300

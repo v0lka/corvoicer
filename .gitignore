@@ -1,0 +1,40 @@
+# SSL certificates for local HTTPS development
+.cert/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Database files
+*.db
+*.db-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+*.test
+*.out
+coverage.out
+
+# Logs
+*.log
+logs/

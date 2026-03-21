@@ -1,0 +1,31 @@
+api_key: devkey
+api_secret: "secret-dev-key-min-32-characters!!"
+# Connect to LiveKit via non-TLS WebSocket (LiveKit doesn't support direct TLS)
+# For production, place LiveKit behind a TLS-terminating reverse proxy
+ws_url: ws://192.168.1.53:7880
+
+rtc_config:
+  port_range_start: 60000
+  port_range_end: 60100
+  use_external_ip: false
+  node_ip: 192.168.1.53
+  # Enable loopback for local testing (can be disabled for LAN-only)
+  enable_loopback_candidate: true
+  # STUN enabled for LAN testing (allows hosts to discover their local network addresses)
+  stun_servers: ["stun:stun.l.google.com:19302"]
+
+redis:
+  address: localhost:6379
+
+logging:
+  level: info
+
+whip_port: 7985
+# Bind WHIP to all interfaces for LAN access
+whip_bind_addr: 0.0.0.0
+
+# Note: Ingress does not support direct TLS configuration.
+# For HTTPS, use a reverse proxy (Caddy/Nginx) in front of the Ingress.
+# For local LAN development, HTTP is sufficient.
+
+enable_transcoding: false
