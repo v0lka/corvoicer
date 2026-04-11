@@ -16,9 +16,13 @@ export function ChatPanel({ onSend, disabled, loadingHistory }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const emojiRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Scroll to bottom when messages change
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   useEffect(() => {
@@ -66,11 +70,14 @@ export function ChatPanel({ onSend, disabled, loadingHistory }: Props) {
   }, [input])
 
   return (
-    <div className="flex flex-col flex-1">
-      <div className="px-3 py-2 border-b border-slate-700/50">
+    <div className="flex flex-col h-96">
+      <div className="px-3 py-2 border-b border-slate-700/50 shrink-0">
         <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Chat</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-1.5 min-h-0"
+      >
         {loadingHistory && (
           <p className="text-slate-500 text-xs text-center mt-4 animate-pulse">Loading messages...</p>
         )}
@@ -78,11 +85,11 @@ export function ChatPanel({ onSend, disabled, loadingHistory }: Props) {
           <p className="text-slate-600 text-xs text-center mt-4">No messages yet</p>
         )}
         {messages.map((msg) => (
-          <div key={msg.client_message_id} className="text-sm">
+          <div key={msg.client_message_id} className="text-sm break-words overflow-wrap-break-word">
             <span className="text-slate-400 text-xs font-mono">
               {msg.display_name || msg.participant_session_id.slice(0, 6)}
             </span>
-            <span className="text-slate-300 ml-1.5">{msg.text}</span>
+            <span className="text-slate-300 ml-1.5 break-words">{msg.text}</span>
             {msg.not_persisted && (
               <span className="text-yellow-500 text-xs ml-1 animate-pulse" title="Saving...">*</span>
             )}
@@ -90,7 +97,7 @@ export function ChatPanel({ onSend, disabled, loadingHistory }: Props) {
         ))}
         <div ref={bottomRef} />
       </div>
-      <div className="px-3 py-2 border-t border-slate-700/50">
+      <div className="px-3 py-2 border-t border-slate-700/50 shrink-0">
         <div className="relative">
           {showEmoji && (
             <div ref={emojiRef} className="absolute bottom-full mb-2 right-0 z-50">

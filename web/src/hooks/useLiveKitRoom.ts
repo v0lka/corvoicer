@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Room, RoomEvent, Track, RemoteTrack, RemoteTrackPublication, RemoteParticipant, Participant, AudioPresets } from 'livekit-client'
+import { Room, RoomEvent, Track, RemoteTrack, RemoteTrackPublication, RemoteParticipant, Participant, LocalTrackPublication, ParticipantEvent } from 'livekit-client'
+import type { NoiseSuppressionMode } from '../types'
 import { useRoomStore } from '../stores/roomStore'
 import { useStreamStore } from '../stores/streamStore'
 import { useParticipantStore, type Participant as StoredParticipant } from '../stores/participantStore'
 import { logger } from '../utils/logger'
+import { playJoinSound, playLeaveSound } from '../utils/sounds'
 
 export interface AudioProcessingOptions {
-  noiseSuppression: boolean
+  noiseSuppressionMode: NoiseSuppressionMode
   echoCancellation: boolean
 }
 
 export function useLiveKitRoom(
   params: { url: string; token: string; room_id: string } | null,
-  audioProcessing: AudioProcessingOptions = { noiseSuppression: true, echoCancellation: true }
+  audioProcessing: AudioProcessingOptions = { noiseSuppressionMode: 'krisp', echoCancellation: true },
+  onNoiseSuppressionFallback?: (mode: NoiseSuppressionMode) => void
 ) {
   const roomState = useRoomStore((s) => s.state)
   const setReconnecting = useRoomStore((s) => s.setReconnecting)
@@ -23,6 +26,13 @@ export function useLiveKitRoom(
   const [connected, setConnected] = useState(false)
   // Store remote participant voice audio elements
   const voiceAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Store Krisp processor for cleanup
+  const krispProcessorRef = useRef<{ destroy: () => void } | null>(null)
+  // Ref to track latest audioProcessing values to avoid stale closure
+  const audioProcessingRef = useRef(audioProcessing)
+  useEffect(() => {
+    audioProcessingRef.current = audioProcessing
+  }, [audioProcessing])
 
   const participantToStored = useCallback((p: Participant, isLocal: boolean): StoredParticipant => ({
     identity: p.identity,
@@ -37,7 +47,8 @@ export function useLiveKitRoom(
     const room = new Room({
       // Enable audio processing options
       audioCaptureDefaults: {
-        noiseSuppression: audioProcessing.noiseSuppression,
+        // Krisp handles noise suppression itself, standard uses browser NS, off disables it
+        noiseSuppression: audioProcessing.noiseSuppressionMode === 'standard',
         echoCancellation: audioProcessing.echoCancellation,
         autoGainControl: true,
       },
@@ -105,12 +116,22 @@ export function useLiveKitRoom(
         audioEl.remove()
       })
       voiceAudioElementsRef.current.clear()
+      // Clean up Krisp processor
+      if (krispProcessorRef.current) {
+        krispProcessorRef.current.destroy()
+        krispProcessorRef.current = null
+      }
       roomRef.current = null
     })
 
     room.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
       console.log('[LiveKit] ParticipantConnected:', participant.identity)
       addParticipant(participantToStored(participant, false))
+
+      // Play join sound for non-stream participants
+      if (!participant.identity.startsWith('stream:')) {
+        playJoinSound()
+      }
 
       // Detect ingress participant joining -> stream is LIVE
       if (participant.identity.startsWith('stream:')) {
@@ -131,6 +152,11 @@ export function useLiveKitRoom(
 
     room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
       removeParticipant(participant.identity)
+
+      // Play leave sound for non-stream participants
+      if (!participant.identity.startsWith('stream:')) {
+        playLeaveSound()
+      }
     })
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
@@ -145,6 +171,50 @@ export function useLiveKitRoom(
       return serverUrl
     }
 
+    // Set up Krisp processor when local audio track is published
+    const setupKrispProcessor = async (targetRoom: Room, targetTrack?: LocalTrackPublication['track']) => {
+      if (audioProcessingRef.current.noiseSuppressionMode !== 'krisp') return
+
+      try {
+        const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import('@livekit/krisp-noise-filter')
+
+        if (!isKrispNoiseFilterSupported()) {
+          logger.warn('Krisp noise filter is not supported in this browser')
+          onNoiseSuppressionFallback?.('standard')
+          return
+        }
+
+        const processor = KrispNoiseFilter()
+        krispProcessorRef.current = processor
+
+        // Find the local audio track if not provided
+        const track = targetTrack || (() => {
+          const audioPub = Array.from(targetRoom.localParticipant.trackPublications.values()).find(
+            (pub): pub is LocalTrackPublication => pub.track?.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone
+          )
+          return audioPub?.track
+        })()
+
+        if (track && 'setProcessor' in track) {
+          // Cast processor to any to handle type mismatch between Krisp and LiveKit types
+          await track.setProcessor(processor as any)
+          logger.warn('Krisp noise filter applied to local audio track')
+        }
+      } catch (err) {
+        logger.warn('Failed to initialize Krisp noise filter:', err)
+        onNoiseSuppressionFallback?.('standard')
+      }
+    }
+
+    room.on(ParticipantEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
+      if (pub.track?.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone) {
+        // Apply Krisp processor if in krisp mode (use ref to get latest value)
+        if (audioProcessingRef.current.noiseSuppressionMode === 'krisp') {
+          setupKrispProcessor(room, pub.track)
+        }
+      }
+    })
+
     try {
       await room.connect(getLiveKitUrl(params.url), params.token)
       console.log('[LiveKit] Connected to room, remote participants:',
@@ -152,6 +222,11 @@ export function useLiveKitRoom(
       )
       setConnected(true)
       setReconnecting(false)
+
+      // Check if there's already a local audio track published and apply Krisp
+      if (audioProcessingRef.current.noiseSuppressionMode === 'krisp') {
+        await setupKrispProcessor(room)
+      }
 
       // Initialize participants list
       const initial: StoredParticipant[] = [
@@ -233,6 +308,55 @@ export function useLiveKitRoom(
       disconnect()
     }
   }, [disconnect])
+
+  // Handle noise suppression mode changes when room is already connected
+  useEffect(() => {
+    const room = roomRef.current
+    if (!room || !connected) return
+
+    const handleModeChange = async () => {
+      // Find the local audio track
+      const audioPub = Array.from(room.localParticipant.trackPublications.values()).find(
+        (pub): pub is LocalTrackPublication => pub.track?.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone
+      )
+      const track = audioPub?.track
+
+      if (audioProcessing.noiseSuppressionMode === 'krisp') {
+        // Switching TO krisp mode - set up processor if there's an active audio track
+        if (track) {
+          const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import('@livekit/krisp-noise-filter')
+
+          if (!isKrispNoiseFilterSupported()) {
+            logger.warn('Krisp noise filter is not supported in this browser')
+            onNoiseSuppressionFallback?.('standard')
+            return
+          }
+
+          try {
+            const processor = KrispNoiseFilter()
+            krispProcessorRef.current = processor
+
+            if ('setProcessor' in track) {
+              await track.setProcessor(processor as any)
+              logger.warn('Krisp noise filter applied to local audio track')
+            }
+          } catch (err) {
+            logger.warn('Failed to initialize Krisp noise filter:', err)
+            onNoiseSuppressionFallback?.('standard')
+          }
+        }
+      } else {
+        // Switching AWAY FROM krisp - clean up existing processor
+        if (krispProcessorRef.current && track && 'stopProcessor' in track) {
+          await (track as any).stopProcessor()
+          krispProcessorRef.current.destroy()
+          krispProcessorRef.current = null
+        }
+      }
+    }
+
+    handleModeChange()
+  }, [audioProcessing.noiseSuppressionMode, connected, onNoiseSuppressionFallback])
 
   return { room: roomRef.current, streamTrack, streamAudioTrack, connected }
 }

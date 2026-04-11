@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import type { NoiseSuppressionMode } from './types'
 import { useLiveKitRoom } from './hooks/useLiveKitRoom'
 import { useVoiceChat } from './hooks/useVoiceChat'
 import { useChat } from './hooks/useChat'
@@ -46,8 +47,14 @@ function App() {
   const [isRestoringSession, setIsRestoringSession] = useState(false)
   const restoredSessionRef = useRef(false)
 
-  const [audioProcessing, setAudioProcessing] = useState({ noiseSuppression: true, echoCancellation: true })
-  const { room, streamTrack, streamAudioTrack } = useLiveKitRoom(lkParams, audioProcessing)
+  const [audioProcessing, setAudioProcessing] = useState<{ noiseSuppressionMode: NoiseSuppressionMode; echoCancellation: boolean }>({ noiseSuppressionMode: 'krisp', echoCancellation: true })
+
+  // Handle Krisp fallback when not supported
+  const handleNoiseSuppressionFallback = useCallback((mode: NoiseSuppressionMode) => {
+    setAudioProcessing((prev) => ({ ...prev, noiseSuppressionMode: mode }))
+  }, [])
+
+  const { room, streamTrack, streamAudioTrack } = useLiveKitRoom(lkParams, audioProcessing, handleNoiseSuppressionFallback)
 
   // Audio device management
   const {
@@ -61,9 +68,9 @@ function App() {
   const {
     micEnabled,
     toggleMic,
-    noiseSuppression,
+    noiseSuppressionMode,
     echoCancellation,
-    setNoiseSuppression,
+    setNoiseSuppressionMode,
     setEchoCancellation,
   } = useVoiceChat(room, audioProcessing, selectedDeviceId)
   const { sendMessage, loadHistory, loadingHistory } = useChat(room)
@@ -79,8 +86,8 @@ function App() {
 
   // Sync audio processing options between hook and room
   useEffect(() => {
-    setAudioProcessing({ noiseSuppression, echoCancellation })
-  }, [noiseSuppression, echoCancellation])
+    setAudioProcessing({ noiseSuppressionMode, echoCancellation })
+  }, [noiseSuppressionMode, echoCancellation])
 
   // Load chat history when connected to room
   useEffect(() => {
@@ -357,9 +364,9 @@ function App() {
           micEnabled={micEnabled}
           onToggleMic={handleToggleMic}
           disabled={!isConnected}
-          noiseSuppression={noiseSuppression}
+          noiseSuppressionMode={noiseSuppressionMode}
           echoCancellation={echoCancellation}
-          onNoiseSuppressionChange={setNoiseSuppression}
+          onNoiseSuppressionModeChange={setNoiseSuppressionMode}
           onEchoCancellationChange={setEchoCancellation}
           audioDevices={inputDevices}
           selectedDeviceId={selectedDeviceId}

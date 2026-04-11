@@ -1,5 +1,6 @@
 export type RoomState = 'NOT_CONNECTED' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED'
 export type StreamState = 'IDLE' | 'PROVISIONING' | 'AWAITING_STREAM' | 'LIVE' | 'STOPPING' | 'FAILED'
+export type NoiseSuppressionMode = 'krisp' | 'standard' | 'off'
 
 export interface WhipInfo {
   whip_url: string

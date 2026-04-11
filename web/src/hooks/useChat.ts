@@ -6,6 +6,7 @@ import { useRoomStore } from '../stores/roomStore'
 import { api } from '../services/api'
 import type { ChatMessage } from '../types'
 import { logger } from '../utils/logger'
+import { playChatSound } from '../utils/sounds'
 
 export function useChat(room: Room | null) {
   const addMessage = useChatStore((s) => s.addMessage)
@@ -30,6 +31,7 @@ export function useChat(room: Room | null) {
         display_name: participant?.name || undefined,
       }
       addMessage(msg)
+      playChatSound()
     }
 
     room.on(RoomEvent.ChatMessage, handleChatMessage)

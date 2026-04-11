@@ -1,15 +1,16 @@
 import { useCallback, useState, useEffect } from 'react'
 import { Room, Track, LocalTrackPublication } from 'livekit-client'
+import type { NoiseSuppressionMode } from '../types'
 import { logger } from '../utils/logger'
 
 export interface VoiceChatOptions {
-  noiseSuppression: boolean
+  noiseSuppressionMode: NoiseSuppressionMode
   echoCancellation: boolean
 }
 
 export function useVoiceChat(
   room: Room | null,
-  options: VoiceChatOptions = { noiseSuppression: true, echoCancellation: true },
+  options: VoiceChatOptions = { noiseSuppressionMode: 'krisp', echoCancellation: true },
   deviceId?: string
 ) {
   const [micEnabled, setMicEnabled] = useState(false)
@@ -44,8 +45,8 @@ export function useVoiceChat(
     }
   }, [room, deviceId, micEnabled, switchMicrophoneDevice])
 
-  const setNoiseSuppression = useCallback((enabled: boolean) => {
-    setAudioOptions((prev) => ({ ...prev, noiseSuppression: enabled }))
+  const setNoiseSuppressionMode = useCallback((mode: NoiseSuppressionMode) => {
+    setAudioOptions((prev) => ({ ...prev, noiseSuppressionMode: mode }))
   }, [])
 
   const setEchoCancellation = useCallback((enabled: boolean) => {
@@ -75,9 +76,9 @@ export function useVoiceChat(
     micEnabled,
     toggleMic,
     getMicPublication,
-    noiseSuppression: audioOptions.noiseSuppression,
+    noiseSuppressionMode: audioOptions.noiseSuppressionMode,
     echoCancellation: audioOptions.echoCancellation,
-    setNoiseSuppression,
+    setNoiseSuppressionMode,
     setEchoCancellation,
   }
 }

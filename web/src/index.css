@@ -8,3 +8,9 @@ body {
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
 }
+
+/* Custom utility for overflow-wrap: break-word */
+.overflow-wrap-break-word {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
