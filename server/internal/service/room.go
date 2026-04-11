@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,8 +16,14 @@ type RoomService struct {
 	participants    repository.ParticipantRepository
 	streams         repository.StreamRepository
 	invites         *InviteService
+	lkRoomService   LiveKitRoomService
 	defaultTTL      time.Duration
 	maxParticipants int
+}
+
+type LiveKitRoomService interface {
+	MuteParticipantTrack(ctx context.Context, roomName, identity string, muted bool) error
+	UpdateParticipantMetadata(ctx context.Context, roomName, identity string, metadata string) error
 }
 
 func NewRoomService(
@@ -24,6 +31,7 @@ func NewRoomService(
 	participants repository.ParticipantRepository,
 	streams repository.StreamRepository,
 	invites *InviteService,
+	lkRoomService LiveKitRoomService,
 	defaultTTL time.Duration,
 	maxParticipants int,
 ) *RoomService {
@@ -32,6 +40,7 @@ func NewRoomService(
 		participants:    participants,
 		streams:         streams,
 		invites:         invites,
+		lkRoomService:   lkRoomService,
 		defaultTTL:      defaultTTL,
 		maxParticipants: maxParticipants,
 	}
@@ -221,6 +230,7 @@ type RejoinRoomResult struct {
 	ParticipantSessionID string      `json:"participant_session_id"`
 	Role                 string      `json:"role"`
 	DisplayName          string      `json:"display_name"`
+	MutedByOwner         bool        `json:"muted_by_owner"`
 	ActiveStream         *StreamInfo `json:"active_stream,omitempty"`
 }
 
@@ -258,6 +268,7 @@ func (s *RoomService) RejoinRoom(ctx context.Context, participantSessionID strin
 		ParticipantSessionID: participant.ParticipantSessionID,
 		Role:                 participant.Role,
 		DisplayName:          participant.DisplayName,
+		MutedByOwner:         participant.MutedByOwner,
 	}
 
 	// Check if there's an active stream and if this participant is the broadcaster
@@ -273,4 +284,62 @@ func (s *RoomService) RejoinRoom(ctx context.Context, participantSessionID strin
 	}
 
 	return result, nil
+}
+
+func (s *RoomService) MuteParticipant(ctx context.Context, roomID, requesterSessionID, targetSessionID string, mute bool) error {
+	// Load room by ID
+	room, err := s.rooms.GetByID(ctx, roomID)
+	if err != nil {
+		return fmt.Errorf("get room: %w", err)
+	}
+
+	// Verify requester is the owner
+	if room.OwnerSessionID != requesterSessionID {
+		return domain.ErrNotOwner
+	}
+
+	// Prevent owner from muting themselves
+	if targetSessionID == requesterSessionID {
+		return fmt.Errorf("owner cannot mute themselves")
+	}
+
+	// Load target participant
+	target, err := s.participants.GetByID(ctx, targetSessionID)
+	if err != nil {
+		return fmt.Errorf("get target participant: %w", err)
+	}
+
+	// Verify target is in the same room
+	if target.RoomID != roomID {
+		return fmt.Errorf("target participant is not in the specified room")
+	}
+
+	// Verify target is active (not left)
+	if target.LeftAt != nil {
+		return fmt.Errorf("target participant has left the room")
+	}
+
+	// Call LiveKit to mute/unmute participant's audio track
+	if err := s.lkRoomService.MuteParticipantTrack(ctx, roomID, targetSessionID, mute); err != nil {
+		return fmt.Errorf("mute participant track: %w", err)
+	}
+
+	// Build metadata JSON
+	metadata := map[string]bool{"muted_by_owner": mute}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	// Update participant metadata in LiveKit
+	if err := s.lkRoomService.UpdateParticipantMetadata(ctx, roomID, targetSessionID, string(metadataJSON)); err != nil {
+		return fmt.Errorf("update participant metadata: %w", err)
+	}
+
+	// Update muted_by_owner in database
+	if err := s.participants.SetMutedByOwner(ctx, targetSessionID, mute); err != nil {
+		return fmt.Errorf("set muted_by_owner: %w", err)
+	}
+
+	return nil
 }

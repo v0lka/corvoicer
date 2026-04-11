@@ -22,6 +22,7 @@ export interface JoinResult {
   livekit_token: string
   livekit_url: string
   role: string
+  muted_by_owner: boolean
 }
 
 export interface RejoinResult {
@@ -31,6 +32,7 @@ export interface RejoinResult {
   livekit_url: string
   role: string
   display_name: string
+  muted_by_owner: boolean
   active_stream?: {
     stream_session_id: string
     state: string

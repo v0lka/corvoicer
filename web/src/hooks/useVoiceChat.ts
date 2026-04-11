@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect } from 'react'
-import { Room, Track, LocalTrackPublication } from 'livekit-client'
+import { Room, Track, LocalTrackPublication, RoomEvent } from 'livekit-client'
 import type { NoiseSuppressionMode } from '../types'
+import { useParticipantStore } from '../stores/participantStore'
 import { logger } from '../utils/logger'
 
 export interface VoiceChatOptions {
@@ -15,14 +16,24 @@ export function useVoiceChat(
 ) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [audioOptions, setAudioOptions] = useState<VoiceChatOptions>(options)
+  const [isMutedByOwner, setIsMutedByOwner] = useState(false)
+  const participantId = room?.localParticipant?.identity
+  const isMutedByOwnerFromStore = useParticipantStore(
+    (state) => participantId ? state.participants.get(participantId)?.isMutedByOwner : false
+  )
 
   const toggleMic = useCallback(async () => {
     if (!room) return
 
+    // Prevent unmuting if muted by owner
+    if (isMutedByOwner && !micEnabled) {
+      return
+    }
+
     const newState = !micEnabled
     await room.localParticipant.setMicrophoneEnabled(newState)
     setMicEnabled(newState)
-  }, [room, micEnabled])
+  }, [room, micEnabled, isMutedByOwner])
 
   // Switch microphone device when deviceId changes
   const switchMicrophoneDevice = useCallback(async (newDeviceId: string) => {
@@ -72,8 +83,53 @@ export function useVoiceChat(
     }
   }, [audioOptions, room])
 
+  // Watch for mute by owner changes from the participant store
+  useEffect(() => {
+    if (!room) return
+
+    // Update local state when store changes
+    if (isMutedByOwnerFromStore !== undefined) {
+      setIsMutedByOwner(isMutedByOwnerFromStore)
+
+      // If muted by owner, force mic off
+      if (isMutedByOwnerFromStore && micEnabled) {
+        room.localParticipant.setMicrophoneEnabled(false)
+        setMicEnabled(false)
+      }
+    }
+  }, [isMutedByOwnerFromStore, room, micEnabled])
+
+  // Also listen to ParticipantMetadataChanged for real-time updates
+  useEffect(() => {
+    if (!room) return
+
+    const handleMetadataChanged = (metadata: string | undefined) => {
+      try {
+        const meta = metadata ? JSON.parse(metadata) : {}
+        const mutedByOwner = meta.muted_by_owner ?? false
+        setIsMutedByOwner(mutedByOwner)
+
+        // If muted by owner, force mic off
+        if (mutedByOwner && micEnabled) {
+          room.localParticipant.setMicrophoneEnabled(false)
+          setMicEnabled(false)
+        }
+      } catch {
+        // Invalid metadata, treat as not muted
+        setIsMutedByOwner(false)
+      }
+    }
+
+    room.on(RoomEvent.ParticipantMetadataChanged, handleMetadataChanged)
+
+    return () => {
+      room.off(RoomEvent.ParticipantMetadataChanged, handleMetadataChanged)
+    }
+  }, [room, micEnabled])
+
   return {
     micEnabled,
+    isMutedByOwner,
     toggleMic,
     getMicPublication,
     noiseSuppressionMode: audioOptions.noiseSuppressionMode,

@@ -31,6 +31,7 @@ func (h *RoomHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/rooms/rejoin", h.RejoinRoom)
 	mux.HandleFunc("GET /api/v1/rooms/{room_id}", h.GetRoom)
 	mux.HandleFunc("POST /api/v1/rooms/{room_id}/leave", h.LeaveRoom)
+	mux.HandleFunc("POST /api/v1/rooms/{room_id}/participants/{participant_session_id}/mute", h.MuteParticipant)
 	mux.HandleFunc("POST /api/v1/auth/validate-admin-token", h.ValidateAdminToken)
 }
 
@@ -98,6 +99,7 @@ type joinRoomResponse struct {
 	LiveKitToken         string      `json:"livekit_token"`
 	LiveKitURL           string      `json:"livekit_url"`
 	Role                 string      `json:"role"`
+	MutedByOwner         bool        `json:"muted_by_owner"`
 	ActiveStream         *streamInfo `json:"active_stream,omitempty"`
 }
 
@@ -147,6 +149,7 @@ func (h *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		LiveKitToken:         lkToken,
 		LiveKitURL:           h.livekit.GetURL(),
 		Role:                 result.Role,
+		MutedByOwner:         false,
 	}
 	if result.ActiveStream != nil {
 		resp.ActiveStream = &streamInfo{
@@ -168,6 +171,7 @@ type rejoinRoomResponse struct {
 	LiveKitURL           string      `json:"livekit_url"`
 	Role                 string      `json:"role"`
 	DisplayName          string      `json:"display_name"`
+	MutedByOwner         bool        `json:"muted_by_owner"`
 	ActiveStream         *streamInfo `json:"active_stream,omitempty"`
 }
 
@@ -223,6 +227,7 @@ func (h *RoomHandler) RejoinRoom(w http.ResponseWriter, r *http.Request) {
 		LiveKitURL:           h.livekit.GetURL(),
 		Role:                 result.Role,
 		DisplayName:          result.DisplayName,
+		MutedByOwner:         result.MutedByOwner,
 	}
 	if result.ActiveStream != nil {
 		resp.ActiveStream = &streamInfo{
@@ -294,4 +299,53 @@ func (h *RoomHandler) ValidateAdminToken(w http.ResponseWriter, r *http.Request)
 
 	valid := subtle.ConstantTimeCompare([]byte(req.AdminToken), []byte(h.adminToken)) == 1
 	api.WriteJSON(w, http.StatusOK, map[string]bool{"valid": valid})
+}
+
+type muteParticipantRequest struct {
+	ParticipantSessionID string `json:"participant_session_id"` // requester
+	Muted                bool   `json:"muted"`
+}
+
+func (h *RoomHandler) MuteParticipant(w http.ResponseWriter, r *http.Request) {
+	roomID := r.PathValue("room_id")
+	if roomID == "" {
+		api.WriteError(w, http.StatusBadRequest, "MISSING_ROOM_ID", "room_id is required")
+		return
+	}
+
+	targetSessionID := r.PathValue("participant_session_id")
+	if targetSessionID == "" {
+		api.WriteError(w, http.StatusBadRequest, "MISSING_PARTICIPANT_ID", "participant_session_id is required")
+		return
+	}
+
+	var req muteParticipantRequest
+	if err := api.DecodeJSON(r, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if req.ParticipantSessionID == "" {
+		api.WriteError(w, http.StatusBadRequest, "MISSING_REQUESTER_ID", "participant_session_id (requester) is required")
+		return
+	}
+
+	if err := h.roomService.MuteParticipant(r.Context(), roomID, req.ParticipantSessionID, targetSessionID, req.Muted); err != nil {
+		if errors.Is(err, domain.ErrNotOwner) {
+			api.WriteError(w, http.StatusForbidden, "NOT_OWNER", "only room owner can mute participants")
+			return
+		}
+		if errors.Is(err, domain.ErrRoomNotFound) {
+			api.WriteError(w, http.StatusNotFound, "ROOM_NOT_FOUND", "room not found")
+			return
+		}
+		if errors.Is(err, domain.ErrParticipantNotFound) {
+			api.WriteError(w, http.StatusNotFound, "PARTICIPANT_NOT_FOUND", "participant not found")
+			return
+		}
+		api.WriteError(w, http.StatusInternalServerError, "MUTE_FAILED", "failed to mute participant")
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

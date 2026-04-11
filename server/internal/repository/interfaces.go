@@ -21,6 +21,7 @@ type ParticipantRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.ParticipantSession, error)
 	SetLeftAt(ctx context.Context, id string) error
 	ClearLeftAt(ctx context.Context, id string) error
+	SetMutedByOwner(ctx context.Context, participantSessionID string, muted bool) error
 	ListActiveByRoom(ctx context.Context, roomID string) ([]domain.ParticipantSession, error)
 }
 

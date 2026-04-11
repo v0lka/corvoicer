@@ -14,6 +14,8 @@ interface Props {
   selectedDeviceId?: string
   onDeviceChange?: (deviceId: string) => void
   devicesLoading?: boolean
+  // Mute by owner state
+  isMutedByOwner?: boolean
 }
 
 function Checkbox({
@@ -59,23 +61,36 @@ export function VoiceControls({
   selectedDeviceId,
   onDeviceChange,
   devicesLoading = false,
+  isMutedByOwner = false,
 }: Props) {
   const showAudioOptions = onNoiseSuppressionModeChange || onEchoCancellationChange
   const showDeviceSelector = onDeviceChange && audioDevices.length > 1
 
+  // When muted by owner, the button is disabled and shows a different state
+  const micButtonDisabled = disabled || isMutedByOwner
+  const micButtonClass = isMutedByOwner
+    ? 'bg-yellow-600/80 text-yellow-100 cursor-not-allowed'
+    : micEnabled
+      ? 'bg-red-600 hover:bg-red-700 text-white'
+      : 'bg-slate-600 hover:bg-slate-500 text-slate-200'
+
   return (
     <div className="flex items-center justify-between px-4 py-2 border-t border-slate-700/50">
       <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleMic}
-          disabled={disabled}
-          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${micEnabled
-            ? 'bg-red-600 hover:bg-red-700 text-white'
-            : 'bg-slate-600 hover:bg-slate-500 text-slate-200'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          {micEnabled ? 'Mute' : 'Unmute'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleMic}
+            disabled={micButtonDisabled}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${micButtonClass} disabled:opacity-70`}
+          >
+            {isMutedByOwner ? 'Muted by host' : micEnabled ? 'Mute' : 'Unmute'}
+          </button>
+          {isMutedByOwner && (
+            <span className="text-xs text-yellow-500/90" title="You have been muted by the room owner">
+              🔇
+            </span>
+          )}
+        </div>
 
         {showDeviceSelector && (
           <select

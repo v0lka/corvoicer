@@ -5,6 +5,7 @@ export interface Participant {
   displayName: string
   isSpeaking: boolean
   isLocal: boolean
+  isMutedByOwner: boolean
 }
 
 interface ParticipantStore {
@@ -13,6 +14,7 @@ interface ParticipantStore {
   addParticipant: (p: Participant) => void
   removeParticipant: (identity: string) => void
   updateSpeaking: (speakerIdentities: string[]) => void
+  setMutedByOwner: (identity: string, muted: boolean) => void
   reset: () => void
 }
 
@@ -25,7 +27,7 @@ export const useParticipantStore = create<ParticipantStore>((set) => ({
   addParticipant: (p) =>
     set((state) => {
       const map = new Map(state.participants)
-      map.set(p.identity, p)
+      map.set(p.identity, { ...p, isMutedByOwner: p.isMutedByOwner ?? false })
       return { participants: map }
     }),
   removeParticipant: (identity) =>
@@ -48,6 +50,15 @@ export const useParticipantStore = create<ParticipantStore>((set) => ({
           map.set(identity, { ...p, isSpeaking: true })
         }
       })
+      return { participants: map }
+    }),
+  setMutedByOwner: (identity, muted) =>
+    set((state) => {
+      const map = new Map(state.participants)
+      const p = map.get(identity)
+      if (p) {
+        map.set(identity, { ...p, isMutedByOwner: muted })
+      }
       return { participants: map }
     }),
   reset: () => set({ participants: new Map() }),

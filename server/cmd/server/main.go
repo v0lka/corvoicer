@@ -26,6 +26,9 @@ var migration001 string
 //go:embed migrations/002_drop_source_columns.sql
 var migration002 string
 
+//go:embed migrations/003_add_muted_by_owner.sql
+var migration003 string
+
 //go:embed all:dist
 var webAssets embed.FS
 
@@ -52,6 +55,7 @@ func main() {
 	if err := sqlite.RunMigrations(db, []sqlite.NamedMigration{
 		{Version: 1, Name: "initial_schema", SQL: migration001},
 		{Version: 2, Name: "drop_source_columns", SQL: migration002},
+		{Version: 3, Name: "add_muted_by_owner", SQL: migration003},
 	}); err != nil {
 		slog.Error("failed to run migrations", "error", err)
 		os.Exit(1)
@@ -66,10 +70,11 @@ func main() {
 	// LiveKit
 	tokenService := lk.NewTokenService(cfg.LiveKitAPIKey, cfg.LiveKitAPISecret, cfg.LiveKitHost)
 	ingressService := lk.NewIngressService(cfg.LiveKitHost, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
+	roomServiceClient := lk.NewRoomServiceClient(cfg.LiveKitHost, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
 
 	// Services
 	inviteService := service.NewInviteService(cfg.InviteTokenSecret)
-	roomService := service.NewRoomService(roomRepo, participantRepo, streamRepo, inviteService, cfg.RoomDefaultTTL, cfg.RoomMaxParticipants)
+	roomService := service.NewRoomService(roomRepo, participantRepo, streamRepo, inviteService, roomServiceClient, cfg.RoomDefaultTTL, cfg.RoomMaxParticipants)
 	streamService := service.NewStreamService(roomRepo, streamRepo, ingressService, cfg.WHIPBaseURL)
 	messageService := service.NewMessageService(messageRepo, cfg.ChatMaxPerRoom)
 

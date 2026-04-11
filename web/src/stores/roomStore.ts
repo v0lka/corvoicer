@@ -11,6 +11,7 @@ interface RoomStore {
   setState: (state: RoomState) => void
   setRoomInfo: (roomId: string, participantId: string, role: 'owner' | 'member', inviteToken?: string) => void
   setReconnecting: (status: boolean) => void
+  setRole: (role: string) => void
   reset: () => void
 }
 
@@ -67,6 +68,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
     set({ roomId, participantId, role, inviteToken: inviteToken ?? null })
   },
   setReconnecting: (status) => set({ reconnecting: status }),
+  setRole: (role) => set({ role: role as 'owner' | 'member' | null }),
   reset: () => {
     clearSessionStorage()
     set({ state: 'NOT_CONNECTED', roomId: null, participantId: null, inviteToken: null, role: null, reconnecting: false })

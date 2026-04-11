@@ -91,4 +91,14 @@ export const api = {
     if (!response.ok) throw new Error(`Get chat history failed: ${response.statusText}`)
     return await response.json()
   },
+
+  async muteParticipant(roomId: string, targetSessionId: string, muted: boolean, requesterSessionId: string) {
+    const response = await fetch(`/api/v1/rooms/${roomId}/participants/${targetSessionId}/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participant_session_id: requesterSessionId, muted })
+    })
+    if (!response.ok) throw new Error(`Mute participant failed: ${response.statusText}`)
+    return await response.json()
+  },
 }

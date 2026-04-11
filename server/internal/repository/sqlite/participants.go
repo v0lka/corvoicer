@@ -19,12 +19,13 @@ func NewParticipantRepo(db *sql.DB) *ParticipantRepo {
 
 func (r *ParticipantRepo) Create(ctx context.Context, p *domain.ParticipantSession) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO participant_sessions (participant_session_id, room_id, display_name, role, joined_at)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO participant_sessions (participant_session_id, room_id, display_name, role, muted_by_owner, joined_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		p.ParticipantSessionID,
 		p.RoomID,
 		p.DisplayName,
 		p.Role,
+		p.MutedByOwner,
 		p.JoinedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
@@ -39,12 +40,13 @@ func (r *ParticipantRepo) GetByID(ctx context.Context, id string) (*domain.Parti
 	var leftAt sql.NullString
 
 	err := r.db.QueryRowContext(ctx,
-		`SELECT participant_session_id, room_id, display_name, role, joined_at, left_at
+		`SELECT participant_session_id, room_id, display_name, role, muted_by_owner, joined_at, left_at
 		 FROM participant_sessions WHERE participant_session_id = ?`, id).Scan(
 		&p.ParticipantSessionID,
 		&p.RoomID,
 		&p.DisplayName,
 		&p.Role,
+		&p.MutedByOwner,
 		&joinedAt,
 		&leftAt,
 	)
@@ -84,9 +86,19 @@ func (r *ParticipantRepo) ClearLeftAt(ctx context.Context, id string) error {
 	return nil
 }
 
+func (r *ParticipantRepo) SetMutedByOwner(ctx context.Context, participantSessionID string, muted bool) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE participant_sessions SET muted_by_owner = ? WHERE participant_session_id = ?`,
+		muted, participantSessionID)
+	if err != nil {
+		return fmt.Errorf("set muted_by_owner: %w", err)
+	}
+	return nil
+}
+
 func (r *ParticipantRepo) ListActiveByRoom(ctx context.Context, roomID string) ([]domain.ParticipantSession, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT participant_session_id, room_id, display_name, role, joined_at, left_at
+		`SELECT participant_session_id, room_id, display_name, role, muted_by_owner, joined_at, left_at
 		 FROM participant_sessions WHERE room_id = ? AND left_at IS NULL
 		 ORDER BY joined_at ASC`, roomID)
 	if err != nil {
@@ -99,7 +111,7 @@ func (r *ParticipantRepo) ListActiveByRoom(ctx context.Context, roomID string) (
 		var p domain.ParticipantSession
 		var joinedAt string
 		var leftAt sql.NullString
-		if err := rows.Scan(&p.ParticipantSessionID, &p.RoomID, &p.DisplayName, &p.Role, &joinedAt, &leftAt); err != nil {
+		if err := rows.Scan(&p.ParticipantSessionID, &p.RoomID, &p.DisplayName, &p.Role, &p.MutedByOwner, &joinedAt, &leftAt); err != nil {
 			return nil, fmt.Errorf("scan participant row: %w", err)
 		}
 		p.JoinedAt, _ = time.Parse(time.RFC3339, joinedAt)

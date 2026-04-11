@@ -67,6 +67,7 @@ function App() {
 
   const {
     micEnabled,
+    isMutedByOwner,
     toggleMic,
     noiseSuppressionMode,
     echoCancellation,
@@ -372,6 +373,7 @@ function App() {
           selectedDeviceId={selectedDeviceId}
           onDeviceChange={selectDevice}
           devicesLoading={devicesLoading}
+          isMutedByOwner={isMutedByOwner}
         />
         <StatusBar />
       </div>

@@ -7,6 +7,10 @@ import { useParticipantStore, type Participant as StoredParticipant } from '../s
 import { logger } from '../utils/logger'
 import { playJoinSound, playLeaveSound } from '../utils/sounds'
 
+interface ParticipantMetadata {
+  muted_by_owner?: boolean
+}
+
 export interface AudioProcessingOptions {
   noiseSuppressionMode: NoiseSuppressionMode
   echoCancellation: boolean
@@ -34,12 +38,25 @@ export function useLiveKitRoom(
     audioProcessingRef.current = audioProcessing
   }, [audioProcessing])
 
-  const participantToStored = useCallback((p: Participant, isLocal: boolean): StoredParticipant => ({
-    identity: p.identity,
-    displayName: p.name || p.identity.slice(0, 8),
-    isSpeaking: false,
-    isLocal,
-  }), [])
+  const participantToStored = useCallback((p: Participant, isLocal: boolean): StoredParticipant => {
+    // Parse metadata to get initial muted_by_owner state
+    let isMutedByOwner = false
+    if (p.metadata) {
+      try {
+        const meta = JSON.parse(p.metadata) as ParticipantMetadata
+        isMutedByOwner = meta.muted_by_owner ?? false
+      } catch {
+        // Invalid metadata, treat as not muted
+      }
+    }
+    return {
+      identity: p.identity,
+      displayName: p.name || p.identity.slice(0, 8),
+      isSpeaking: false,
+      isLocal,
+      isMutedByOwner,
+    }
+  }, [])
 
   const connect = useCallback(async () => {
     if (!params || roomRef.current) return
@@ -124,9 +141,27 @@ export function useLiveKitRoom(
       roomRef.current = null
     })
 
+    const parseParticipantMetadata = (metadata: string | undefined): ParticipantMetadata => {
+      if (!metadata) return {}
+      try {
+        return JSON.parse(metadata) as ParticipantMetadata
+      } catch {
+        return {}
+      }
+    }
+
+    const handleParticipantMetadata = (participant: Participant) => {
+      const meta = parseParticipantMetadata(participant.metadata)
+      const mutedByOwner = meta.muted_by_owner ?? false
+      useParticipantStore.getState().setMutedByOwner(participant.identity, mutedByOwner)
+    }
+
     room.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
       console.log('[LiveKit] ParticipantConnected:', participant.identity)
       addParticipant(participantToStored(participant, false))
+
+      // Handle initial metadata for the joining participant
+      handleParticipantMetadata(participant)
 
       // Play join sound for non-stream participants
       if (!participant.identity.startsWith('stream:')) {
@@ -148,6 +183,13 @@ export function useLiveKitRoom(
           useStreamStore.getState().setState('LIVE')
         }
       }
+    })
+
+    room.on(RoomEvent.ParticipantMetadataChanged, (metadata: string | undefined, participant: Participant) => {
+      console.log('[LiveKit] ParticipantMetadataChanged:', participant.identity, metadata)
+      const meta = parseParticipantMetadata(metadata)
+      const mutedByOwner = meta.muted_by_owner ?? false
+      useParticipantStore.getState().setMutedByOwner(participant.identity, mutedByOwner)
     })
 
     room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
@@ -234,6 +276,10 @@ export function useLiveKitRoom(
         ...Array.from(room.remoteParticipants.values()).map((p) => participantToStored(p, false)),
       ]
       setParticipants(initial)
+
+      // Handle initial metadata for all participants
+      handleParticipantMetadata(room.localParticipant)
+      room.remoteParticipants.forEach((p) => handleParticipantMetadata(p))
 
       // Check if ingress participant is already in the room with tracks
       for (const p of room.remoteParticipants.values()) {
