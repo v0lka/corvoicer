@@ -150,7 +150,7 @@ export function VideoPanel({ streamTrack, streamAudioTrack }: Props) {
   }, [])
 
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col bg-black/30 relative min-h-0">
+    <div ref={containerRef} className="flex-none flex flex-col bg-black/30 relative">
       <div
         className="flex-1 flex items-center justify-center overflow-hidden relative"
         onContextMenu={(e) => e.preventDefault()}

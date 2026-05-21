@@ -70,7 +70,7 @@ export function ChatPanel({ onSend, disabled, loadingHistory }: Props) {
   }, [input])
 
   return (
-    <div className="flex flex-col h-96">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="px-3 py-2 border-b border-slate-700/50 shrink-0">
         <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Chat</span>
       </div>

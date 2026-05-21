@@ -359,7 +359,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-[#1b2636] text-slate-200">
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         <VideoPanel streamTrack={streamTrack} streamAudioTrack={streamAudioTrack} />
         <VoiceControls
           micEnabled={micEnabled}
@@ -402,14 +402,16 @@ function App() {
           </div>
         )}
         <ChatPanel onSend={handleSendChat} disabled={!isConnected} loadingHistory={loadingHistory} />
-        <BroadcastControls
-          streamState={streamState}
-          whipInfo={whipInfo}
-          onStartStream={handleStartStream}
-          onStopStream={handleStopStream}
-          disabled={!isConnected}
-          isOwner={role === 'owner'}
-        />
+        <div className="shrink-0">
+          <BroadcastControls
+            streamState={streamState}
+            whipInfo={whipInfo}
+            onStartStream={handleStartStream}
+            onStopStream={handleStopStream}
+            disabled={!isConnected}
+            isOwner={role === 'owner'}
+          />
+        </div>
       </div>
     </div>
   )
