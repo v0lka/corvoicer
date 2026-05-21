@@ -106,10 +106,26 @@ Notes:
 - `src/services`: API client functions
 - `src/types`: shared type definitions
 
+## Security Policy
+
+This project maintains a security policy in [SECURITY.md](./SECURITY.md).
+All AI coding agents MUST read and follow SECURITY.md before making changes.
+It contains:
+
+- Threat model and trust boundaries
+- Attack surface documentation for all API endpoints
+- Secure coding guidelines specific to Go + React/TypeScript stack
+- Hard constraints and forbidden patterns for AI agents
+- Vulnerability reporting procedures
+- Known risks and accepted trade-offs
+
+Any code contribution that violates the rules in SECURITY.md will be rejected.
+
 ## Working Safely
 - Do not commit secrets (env files, tokens).
 - When editing server responses or request bodies, update types in `web/src/types/index.ts`.
 - Keep API field names in sync between Go JSON tags and TS types.
+- Follow the security policy in [SECURITY.md](./SECURITY.md).
 
 ## Useful References
 - Local dev: `./run.sh` (or selective flags)
