@@ -16,6 +16,16 @@ export function useVoiceChat(
 ) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [audioOptions, setAudioOptions] = useState<VoiceChatOptions>(options)
+
+  // Sync audioOptions from prop changes (e.g. Krisp fallback updates mode in parent)
+  useEffect(() => {
+    setAudioOptions((prev) => {
+      if (prev.noiseSuppressionMode === options.noiseSuppressionMode && prev.echoCancellation === options.echoCancellation) {
+        return prev // no change needed, avoid unnecessary re-render
+      }
+      return { ...options }
+    })
+  }, [options.noiseSuppressionMode, options.echoCancellation])
   const [isMutedByOwner, setIsMutedByOwner] = useState(false)
   const participantId = room?.localParticipant?.identity
   const isMutedByOwnerFromStore = useParticipantStore(

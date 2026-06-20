@@ -241,6 +241,11 @@ export function useLiveKitRoom(
           // Cast processor to any to handle type mismatch between Krisp and LiveKit types
           await track.setProcessor(processor as any)
           logger.warn('Krisp noise filter applied to local audio track')
+        } else {
+          logger.warn('Krisp noise filter: no active audio track or track does not support setProcessor', {
+            hasTrack: !!track,
+            hasSetProcessor: track ? 'setProcessor' in track : false,
+          })
         }
       } catch (err) {
         logger.warn('Failed to initialize Krisp noise filter:', err)
@@ -361,6 +366,18 @@ export function useLiveKitRoom(
     if (!room || !connected) return
 
     const handleModeChange = async () => {
+      // Update room's audioCaptureDefaults so the NEXT mic track creation
+      // uses the correct browser noiseSuppression constraint.
+      // Krisp mode: browser NS off (Krisp handles it)
+      // Standard mode: browser NS on
+      // Off mode: browser NS off
+      if (room.options.audioCaptureDefaults) {
+        room.options.audioCaptureDefaults.noiseSuppression =
+          audioProcessing.noiseSuppressionMode === 'standard'
+        room.options.audioCaptureDefaults.echoCancellation =
+          audioProcessing.echoCancellation
+      }
+
       // Find the local audio track
       const audioPub = Array.from(room.localParticipant.trackPublications.values()).find(
         (pub): pub is LocalTrackPublication => pub.track?.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone
@@ -385,6 +402,8 @@ export function useLiveKitRoom(
             if ('setProcessor' in track) {
               await track.setProcessor(processor as any)
               logger.warn('Krisp noise filter applied to local audio track')
+            } else {
+              logger.warn('Krisp noise filter: track does not support setProcessor')
             }
           } catch (err) {
             logger.warn('Failed to initialize Krisp noise filter:', err)
@@ -402,7 +421,7 @@ export function useLiveKitRoom(
     }
 
     handleModeChange()
-  }, [audioProcessing.noiseSuppressionMode, connected, onNoiseSuppressionFallback])
+  }, [audioProcessing.noiseSuppressionMode, audioProcessing.echoCancellation, connected, onNoiseSuppressionFallback])
 
   return { room: roomRef.current, streamTrack, streamAudioTrack, connected }
 }
