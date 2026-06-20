@@ -26,6 +26,7 @@ function App() {
   const streamSessionId = useStreamStore((s) => s.streamSessionId)
   const setWhipInfo = useStreamStore((s) => s.setWhipInfo)
   const setStreamState = useStreamStore((s) => s.setState)
+  const setStreamStartInfo = useStreamStore((s) => s.setStreamStartInfo)
   const setStreamSessionId = useStreamStore((s) => s.setStreamSessionId)
   const setStreamError = useStreamStore((s) => s.setError)
   const setRoomState = useRoomStore((s) => s.setState)
@@ -236,15 +237,14 @@ function App() {
     try {
       setStreamState('PROVISIONING')
       const result = await api.startStream(roomId, participantId)
-      setStreamSessionId(result.stream_session_id)
-      setWhipInfo({ whip_url: result.whip_url, whip_bearer_token: result.whip_bearer_token })
+      setStreamStartInfo(result.stream_session_id, { whip_url: result.whip_url, whip_bearer_token: result.whip_bearer_token })
       setStreamState('AWAITING_STREAM')
     } catch (err) {
       logger.error('Start stream failed:', err)
       setStreamError(String(err))
       setStreamState('FAILED')
     }
-  }, [roomId, participantId, setStreamState, setStreamSessionId, setWhipInfo, setStreamError])
+  }, [roomId, participantId, setStreamState, setStreamStartInfo, setStreamError])
 
   const handleStopStream = useCallback(async () => {
     if (!roomId || !participantId || !streamSessionId) return
@@ -258,11 +258,12 @@ function App() {
   }, [roomId, participantId, streamSessionId, setStreamState, resetStream])
 
   const handleSendChat = useCallback(async (text: string) => {
-    const clientMsgId = crypto.randomUUID()
-    sendMessage(text)
+    const clientMsgId = await sendMessage(text)
+    if (!clientMsgId) return
     try {
       if (roomId && participantId) {
         await api.sendChatMessage(roomId, participantId, clientMsgId, text)
+        useChatStore.getState().markPersisted(clientMsgId)
       }
     } catch (err) {
       logger.error('Persist chat failed:', err)

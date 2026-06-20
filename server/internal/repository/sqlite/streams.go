@@ -44,6 +44,14 @@ func (r *StreamRepo) GetByID(ctx context.Context, id string) (*domain.StreamSess
 		 FROM stream_sessions WHERE stream_session_id = ?`, id))
 }
 
+func (r *StreamRepo) GetByIngressID(ctx context.Context, ingressID string) (*domain.StreamSession, error) {
+	return r.scanStream(r.db.QueryRowContext(ctx,
+		`SELECT stream_session_id, room_id, participant_session_id,
+		        state, ingress_id, ingress_participant_identity, started_at, ended_at
+		 FROM stream_sessions WHERE ingress_id = ? AND ended_at IS NULL
+		 ORDER BY started_at DESC LIMIT 1`, ingressID))
+}
+
 func (r *StreamRepo) GetActiveByRoom(ctx context.Context, roomID string) (*domain.StreamSession, error) {
 	return r.scanStream(r.db.QueryRowContext(ctx,
 		`SELECT stream_session_id, room_id, participant_session_id,
@@ -94,9 +102,15 @@ func (r *StreamRepo) scanStream(row *sql.Row) (*domain.StreamSession, error) {
 		return nil, fmt.Errorf("scan stream: %w", err)
 	}
 
-	s.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+	s.StartedAt, err = time.Parse(time.RFC3339, startedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse started_at: %w", err)
+	}
 	if endedAt.Valid {
-		t, _ := time.Parse(time.RFC3339, endedAt.String)
+		t, err := time.Parse(time.RFC3339, endedAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse ended_at: %w", err)
+		}
 		s.EndedAt = &t
 	}
 	if ingressID.Valid {

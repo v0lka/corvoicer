@@ -38,6 +38,12 @@ export function useLiveKitRoom(
     audioProcessingRef.current = audioProcessing
   }, [audioProcessing])
 
+  // Ref to track latest onNoiseSuppressionFallback to avoid stale closure
+  const fallbackRef = useRef(onNoiseSuppressionFallback)
+  useEffect(() => {
+    fallbackRef.current = onNoiseSuppressionFallback
+  }, [onNoiseSuppressionFallback])
+
   const participantToStored = useCallback((p: Participant, isLocal: boolean): StoredParticipant => {
     // Parse metadata to get initial muted_by_owner state
     let isMutedByOwner = false
@@ -195,6 +201,14 @@ export function useLiveKitRoom(
     room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
       removeParticipant(participant.identity)
 
+      // Detect ingress participant disconnecting — stream has failed
+      if (participant.identity.startsWith('stream:')) {
+        const { state } = useStreamStore.getState()
+        if (state !== 'STOPPING' && (state === 'LIVE' || state === 'AWAITING_STREAM')) {
+          useStreamStore.getState().setState('FAILED')
+        }
+      }
+
       // Play leave sound for non-stream participants
       if (!participant.identity.startsWith('stream:')) {
         playLeaveSound()
@@ -222,7 +236,7 @@ export function useLiveKitRoom(
 
         if (!isKrispNoiseFilterSupported()) {
           logger.warn('Krisp noise filter is not supported in this browser')
-          onNoiseSuppressionFallback?.('standard')
+          fallbackRef.current?.('standard')
           return
         }
 
@@ -249,7 +263,7 @@ export function useLiveKitRoom(
         }
       } catch (err) {
         logger.warn('Failed to initialize Krisp noise filter:', err)
-        onNoiseSuppressionFallback?.('standard')
+        fallbackRef.current?.('standard')
       }
     }
 
@@ -391,7 +405,7 @@ export function useLiveKitRoom(
 
           if (!isKrispNoiseFilterSupported()) {
             logger.warn('Krisp noise filter is not supported in this browser')
-            onNoiseSuppressionFallback?.('standard')
+            fallbackRef.current?.('standard')
             return
           }
 
@@ -407,7 +421,7 @@ export function useLiveKitRoom(
             }
           } catch (err) {
             logger.warn('Failed to initialize Krisp noise filter:', err)
-            onNoiseSuppressionFallback?.('standard')
+            fallbackRef.current?.('standard')
           }
         }
       } else {
@@ -421,7 +435,7 @@ export function useLiveKitRoom(
     }
 
     handleModeChange()
-  }, [audioProcessing.noiseSuppressionMode, audioProcessing.echoCancellation, connected, onNoiseSuppressionFallback])
+  }, [audioProcessing.noiseSuppressionMode, audioProcessing.echoCancellation, connected])
 
   return { room: roomRef.current, streamTrack, streamAudioTrack, connected }
 }

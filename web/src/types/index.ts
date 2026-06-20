@@ -16,6 +16,14 @@ export interface RoomInfo {
   livekit_url: string
 }
 
+export interface RoomStatus {
+  room_id: string
+  status: string
+  active_stream: boolean
+  active_broadcaster_session_id: string | null
+  participant_count: number
+}
+
 export interface JoinResult {
   room_id: string
   participant_session_id: string
@@ -23,6 +31,10 @@ export interface JoinResult {
   livekit_url: string
   role: string
   muted_by_owner: boolean
+  active_stream?: {
+    stream_session_id: string
+    state: string
+  }
 }
 
 export interface RejoinResult {

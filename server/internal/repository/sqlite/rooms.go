@@ -41,12 +41,6 @@ func (r *RoomRepo) GetByID(ctx context.Context, roomID string) (*domain.Room, er
 		 FROM rooms WHERE room_id = ?`, roomID))
 }
 
-func (r *RoomRepo) GetByInviteTokenHash(ctx context.Context, hash string) (*domain.Room, error) {
-	return r.scanRoom(r.db.QueryRowContext(ctx,
-		`SELECT room_id, invite_token_hash, status, owner_session_id, active_stream_session_id, created_at, expires_at
-		 FROM rooms WHERE invite_token_hash = ?`, hash))
-}
-
 func (r *RoomRepo) SetActiveStream(ctx context.Context, roomID string, streamSessionID *string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE rooms SET active_stream_session_id = ? WHERE room_id = ?`,
@@ -109,8 +103,14 @@ func (r *RoomRepo) scanRoom(row *sql.Row) (*domain.Room, error) {
 		return nil, fmt.Errorf("scan room: %w", err)
 	}
 
-	room.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	room.ExpiresAt, _ = time.Parse(time.RFC3339, expiresAt)
+	room.CreatedAt, err = time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse created_at: %w", err)
+	}
+	room.ExpiresAt, err = time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse expires_at: %w", err)
+	}
 	if activeStream.Valid {
 		room.ActiveStreamSessionID = &activeStream.String
 	}

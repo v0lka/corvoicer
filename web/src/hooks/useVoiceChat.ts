@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Room, Track, LocalTrackPublication, RoomEvent } from 'livekit-client'
 import type { NoiseSuppressionMode } from '../types'
 import { useParticipantStore } from '../stores/participantStore'
@@ -16,6 +16,12 @@ export function useVoiceChat(
 ) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [audioOptions, setAudioOptions] = useState<VoiceChatOptions>(options)
+
+  // Ref to track latest micEnabled value to avoid stale closure in effect
+  const micEnabledRef = useRef(micEnabled)
+  useEffect(() => {
+    micEnabledRef.current = micEnabled
+  }, [micEnabled])
 
   // Sync audioOptions from prop changes (e.g. Krisp fallback updates mode in parent)
   useEffect(() => {
@@ -120,7 +126,7 @@ export function useVoiceChat(
         setIsMutedByOwner(mutedByOwner)
 
         // If muted by owner, force mic off
-        if (mutedByOwner && micEnabled) {
+        if (mutedByOwner && micEnabledRef.current) {
           room.localParticipant.setMicrophoneEnabled(false)
           setMicEnabled(false)
         }
@@ -135,7 +141,7 @@ export function useVoiceChat(
     return () => {
       room.off(RoomEvent.ParticipantMetadataChanged, handleMetadataChanged)
     }
-  }, [room, micEnabled])
+  }, [room])
 
   return {
     micEnabled,

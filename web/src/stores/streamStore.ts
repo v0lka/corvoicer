@@ -11,6 +11,7 @@ interface StreamStore {
   setError: (error: string | null) => void
   setWhipInfo: (info: WhipInfo | null) => void
   setStreamSessionId: (id: string | null) => void
+  setStreamStartInfo: (streamSessionId: string, whipInfo: WhipInfo) => void
   reset: () => void
 }
 
@@ -38,6 +39,12 @@ export const useStreamStore = create<StreamStore>((set) => ({
     const { whipInfo } = useStreamStore.getState()
     persistStreamInfo(whipInfo, streamSessionId)
     set({ streamSessionId })
+  },
+  // Atomic setter that persists both whipInfo and streamSessionId together,
+  // avoiding the race condition between sequential setWhipInfo + setStreamSessionId calls.
+  setStreamStartInfo: (streamSessionId, whipInfo) => {
+    persistStreamInfo(whipInfo, streamSessionId)
+    set({ streamSessionId, whipInfo })
   },
   reset: () => {
     const session = loadSessionFromStorage()

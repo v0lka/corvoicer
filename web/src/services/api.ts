@@ -5,7 +5,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ admin_token: adminToken })
     })
-    if (!response.ok) throw new Error(`Validate admin token failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Validate admin token failed: ${msg}`)
+    }
     return await response.json() as { valid: boolean }
   },
 
@@ -15,7 +19,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ owner_display_name: displayName, admin_token: adminToken })
     })
-    if (!response.ok) throw new Error(`Create room failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Create room failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -25,7 +33,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ invite_token: inviteToken, display_name: displayName })
     })
-    if (!response.ok) throw new Error(`Join room failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Join room failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -35,7 +47,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ participant_session_id: participantSessionId })
     })
-    if (!response.ok) throw new Error(`Rejoin room failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Rejoin room failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -45,7 +61,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ participant_session_id: participantSessionId })
     })
-    if (!response.ok) throw new Error(`Leave room failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Leave room failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -55,7 +75,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ participant_session_id: participantSessionId })
     })
-    if (!response.ok) throw new Error(`Start stream failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Start stream failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -68,7 +92,11 @@ export const api = {
         stream_session_id: streamSessionId
       })
     })
-    if (!response.ok) throw new Error(`Stop stream failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Stop stream failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -82,13 +110,21 @@ export const api = {
         text
       })
     })
-    if (!response.ok) throw new Error(`Send message failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Send message failed: ${msg}`)
+    }
     return await response.json()
   },
 
   async getChatHistory(roomId: string) {
     const response = await fetch(`/api/v1/rooms/${roomId}/messages`)
-    if (!response.ok) throw new Error(`Get chat history failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Get chat history failed: ${msg}`)
+    }
     return await response.json()
   },
 
@@ -98,7 +134,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ participant_session_id: requesterSessionId, muted })
     })
-    if (!response.ok) throw new Error(`Mute participant failed: ${response.statusText}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const msg = body?.error?.message || response.statusText
+      throw new Error(`Mute participant failed: ${msg}`)
+    }
     return await response.json()
   },
 }

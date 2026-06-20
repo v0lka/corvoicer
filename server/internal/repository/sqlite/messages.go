@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -73,7 +74,10 @@ func (r *MessageRepo) ListByRoom(ctx context.Context, roomID string, limit int, 
 		if err := rows.Scan(&m.MessageID, &m.RoomID, &m.ParticipantSessionID, &m.ClientMessageID, &m.Text, &createdAt, &m.DisplayName); err != nil {
 			return nil, fmt.Errorf("scan message row: %w", err)
 		}
-		m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		m.CreatedAt, err = time.Parse(time.RFC3339, createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse created_at: %w", err)
+		}
 		result = append(result, m)
 	}
 	return result, rows.Err()
@@ -112,5 +116,22 @@ func (r *MessageRepo) DeleteExpired(ctx context.Context, retentionDays int) (int
 }
 
 func isUniqueViolation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+	if err == nil {
+		return false
+	}
+	// The modernc.org/sqlite driver returns errors with an error code.
+	// SQLITE_CONSTRAINT_UNIQUE = 2067, SQLITE_CONSTRAINT = 19.
+	type sqliteErr interface {
+		Code() int
+	}
+	var sqErr sqliteErr
+	if errors.As(err, &sqErr) {
+		code := sqErr.Code()
+		return code == 2067 || code == 19
+	}
+	// Fallback for drivers that don't expose structured error codes
+	if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return true
+	}
+	return false
 }

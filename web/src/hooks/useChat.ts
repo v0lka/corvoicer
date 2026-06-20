@@ -58,8 +58,8 @@ export function useChat(room: Room | null) {
     }
   }, [historyLoaded, loadingHistory, loadMessages])
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!room || !text.trim()) return
+  const sendMessage = useCallback(async (text: string): Promise<string> => {
+    if (!room || !text.trim()) return ''
 
     const clientMessageId = crypto.randomUUID()
 
@@ -80,6 +80,8 @@ export function useChat(room: Room | null) {
     } catch (err) {
       logger.error('Failed to send chat message:', err)
     }
+
+    return clientMessageId
   }, [room, addMessage])
 
   return { sendMessage, loadHistory, loadingHistory }

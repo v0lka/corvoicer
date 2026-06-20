@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -12,9 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/webhook"
 	"github.com/vkochetkov/corvoicer/server/internal/api/handlers"
 	"github.com/vkochetkov/corvoicer/server/internal/api/middleware"
 	"github.com/vkochetkov/corvoicer/server/internal/config"
+	"github.com/vkochetkov/corvoicer/server/internal/domain"
 	lk "github.com/vkochetkov/corvoicer/server/internal/livekit"
 	"github.com/vkochetkov/corvoicer/server/internal/repository/sqlite"
 	"github.com/vkochetkov/corvoicer/server/internal/service"
@@ -74,7 +78,7 @@ func main() {
 
 	// Services
 	inviteService := service.NewInviteService(cfg.InviteTokenSecret)
-	roomService := service.NewRoomService(roomRepo, participantRepo, streamRepo, inviteService, roomServiceClient, cfg.RoomDefaultTTL, cfg.RoomMaxParticipants)
+	roomService := service.NewRoomService(roomRepo, participantRepo, streamRepo, inviteService, roomServiceClient, ingressService, cfg.RoomDefaultTTL, cfg.RoomMaxParticipants)
 	streamService := service.NewStreamService(roomRepo, streamRepo, ingressService, cfg.WHIPBaseURL)
 	messageService := service.NewMessageService(messageRepo, cfg.ChatMaxPerRoom)
 
@@ -96,6 +100,10 @@ func main() {
 
 	messageHandler := handlers.NewMessageHandler(messageService)
 	messageHandler.Register(mux)
+
+	// LiveKit webhook — handles ingress_ended events to clean up dead streams
+	webhookKeyProvider := auth.NewSimpleKeyProvider(cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
+	mux.HandleFunc("POST /api/v1/webhook/livekit", livekitWebhook(streamRepo, roomRepo, webhookKeyProvider))
 
 	// SPA serving: embed built frontend assets
 	distFS, err := fs.Sub(webAssets, "dist")
@@ -173,5 +181,61 @@ func spaHandler(fileServer http.Handler, fsys fs.FS) http.HandlerFunc {
 		}
 		f.Close()
 		fileServer.ServeHTTP(w, r)
+	}
+}
+
+// livekitWebhook handles LiveKit webhook events.
+// When an ingress ends unexpectedly (OBS crash, network loss), this cleans up
+// the stream slot so the broadcaster can start a new stream.
+func livekitWebhook(streamRepo *sqlite.StreamRepo, roomRepo *sqlite.RoomRepo, provider *auth.SimpleKeyProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Verify webhook signature before processing
+		event, err := webhook.ReceiveWebhookEvent(r, provider)
+		if err != nil {
+			slog.Error("webhook: signature validation failed", "error", err)
+			w.WriteHeader(http.StatusOK) // 200 to avoid LiveKit retries
+			return
+		}
+
+		if event.Event != "ingress_ended" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		ingress := event.IngressInfo
+		if ingress == nil || ingress.ParticipantIdentity == "" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Extract room ID from "stream:<room_id>" identity
+		if !strings.HasPrefix(ingress.ParticipantIdentity, "stream:") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		roomID := strings.TrimPrefix(ingress.ParticipantIdentity, "stream:")
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		// Look up the stream session by ingress ID
+		stream, err := streamRepo.GetByIngressID(ctx, ingress.IngressId)
+		if err != nil {
+			if !errors.Is(err, domain.ErrStreamNotActive) {
+				slog.Error("webhook: failed to find stream by ingress", "ingress_id", ingress.IngressId, "error", err)
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if err := streamRepo.End(ctx, stream.StreamSessionID); err != nil {
+			slog.Error("webhook: failed to end stream", "stream_session_id", stream.StreamSessionID, "error", err)
+		}
+		if err := roomRepo.SetActiveStream(ctx, roomID, nil); err != nil {
+			slog.Error("webhook: failed to clear active stream", "room_id", roomID, "error", err)
+		}
+
+		slog.Info("webhook: cleaned up dead stream", "room_id", roomID, "ingress_id", ingress.IngressId, "stream_session_id", stream.StreamSessionID)
+		w.WriteHeader(http.StatusOK)
 	}
 }

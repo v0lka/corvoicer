@@ -9,7 +9,6 @@ import (
 type RoomRepository interface {
 	Create(ctx context.Context, room *domain.Room) error
 	GetByID(ctx context.Context, roomID string) (*domain.Room, error)
-	GetByInviteTokenHash(ctx context.Context, hash string) (*domain.Room, error)
 	SetActiveStream(ctx context.Context, roomID string, streamSessionID *string) error
 	SetStatus(ctx context.Context, roomID string, status string) error
 	CountActiveParticipants(ctx context.Context, roomID string) (int, error)
@@ -28,6 +27,7 @@ type ParticipantRepository interface {
 type StreamRepository interface {
 	Create(ctx context.Context, s *domain.StreamSession) error
 	GetByID(ctx context.Context, id string) (*domain.StreamSession, error)
+	GetByIngressID(ctx context.Context, ingressID string) (*domain.StreamSession, error)
 	GetActiveByRoom(ctx context.Context, roomID string) (*domain.StreamSession, error)
 	SetState(ctx context.Context, id string, state string) error
 	End(ctx context.Context, id string) error

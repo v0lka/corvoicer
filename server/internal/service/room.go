@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +19,7 @@ type RoomService struct {
 	streams         repository.StreamRepository
 	invites         *InviteService
 	lkRoomService   LiveKitRoomService
+	ingress         IngressDeleter
 	defaultTTL      time.Duration
 	maxParticipants int
 }
@@ -26,12 +29,18 @@ type LiveKitRoomService interface {
 	UpdateParticipantMetadata(ctx context.Context, roomName, identity string, metadata string) error
 }
 
+// IngressDeleter abstracts IngressService for room cleanup on broadcaster leave.
+type IngressDeleter interface {
+	DeleteIngress(ctx context.Context, ingressID string) error
+}
+
 func NewRoomService(
 	rooms repository.RoomRepository,
 	participants repository.ParticipantRepository,
 	streams repository.StreamRepository,
 	invites *InviteService,
 	lkRoomService LiveKitRoomService,
+	ingress IngressDeleter,
 	defaultTTL time.Duration,
 	maxParticipants int,
 ) *RoomService {
@@ -41,6 +50,7 @@ func NewRoomService(
 		streams:         streams,
 		invites:         invites,
 		lkRoomService:   lkRoomService,
+		ingress:         ingress,
 		defaultTTL:      defaultTTL,
 		maxParticipants: maxParticipants,
 	}
@@ -156,6 +166,8 @@ func (s *RoomService) JoinRoom(ctx context.Context, inviteToken string, displayN
 				StreamSessionID: stream.StreamSessionID,
 				State:           stream.State,
 			}
+		} else if !errors.Is(err, domain.ErrStreamNotActive) {
+			slog.Error("unexpected error fetching active stream", "error", err)
 		}
 	}
 
@@ -186,6 +198,8 @@ func (s *RoomService) GetRoomInfo(ctx context.Context, roomID string) (*RoomInfo
 		stream, err := s.streams.GetByID(ctx, *room.ActiveStreamSessionID)
 		if err == nil {
 			broadcasterID = &stream.ParticipantSessionID
+		} else if !errors.Is(err, domain.ErrStreamNotActive) {
+			slog.Error("unexpected error fetching active stream", "error", err)
 		}
 	}
 
@@ -217,8 +231,20 @@ func (s *RoomService) LeaveRoom(ctx context.Context, participantSessionID string
 	if room.ActiveStreamSessionID != nil {
 		stream, err := s.streams.GetByID(ctx, *room.ActiveStreamSessionID)
 		if err == nil && stream.ParticipantSessionID == participantSessionID {
-			s.streams.End(ctx, stream.StreamSessionID)
-			s.rooms.SetActiveStream(ctx, room.RoomID, nil)
+			// Delete LiveKit ingress first to avoid resource leaks
+			if stream.IngressID != nil {
+				if err := s.ingress.DeleteIngress(ctx, *stream.IngressID); err != nil {
+					slog.Error("failed to delete ingress during leave", "ingress_id", *stream.IngressID, "error", err)
+				}
+			}
+			if err := s.streams.End(ctx, stream.StreamSessionID); err != nil {
+				slog.Error("failed to end stream during leave", "stream_session_id", stream.StreamSessionID, "error", err)
+			}
+			if err := s.rooms.SetActiveStream(ctx, room.RoomID, nil); err != nil {
+				slog.Error("failed to clear active stream during leave", "room_id", room.RoomID, "error", err)
+			}
+		} else if err != nil && !errors.Is(err, domain.ErrStreamNotActive) {
+			slog.Error("unexpected error fetching stream on leave", "error", err)
 		}
 	}
 
@@ -280,6 +306,8 @@ func (s *RoomService) RejoinRoom(ctx context.Context, participantSessionID strin
 				StreamSessionID: stream.StreamSessionID,
 				State:           stream.State,
 			}
+		} else if err != nil && !errors.Is(err, domain.ErrStreamNotActive) {
+			slog.Error("unexpected error fetching stream on rejoin", "error", err)
 		}
 	}
 
@@ -319,8 +347,18 @@ func (s *RoomService) MuteParticipant(ctx context.Context, roomID, requesterSess
 		return fmt.Errorf("target participant has left the room")
 	}
 
+	// Update muted_by_owner in database first (authoritative source)
+	if err := s.participants.SetMutedByOwner(ctx, targetSessionID, mute); err != nil {
+		return fmt.Errorf("set muted_by_owner: %w", err)
+	}
+
 	// Call LiveKit to mute/unmute participant's audio track
 	if err := s.lkRoomService.MuteParticipantTrack(ctx, roomID, targetSessionID, mute); err != nil {
+		// Rollback DB to maintain consistency
+		if rbErr := s.participants.SetMutedByOwner(ctx, targetSessionID, !mute); rbErr != nil {
+			slog.Error("failed to rollback muted_by_owner after LiveKit mute failure",
+				"participant", targetSessionID, "intended_mute", mute, "rollback_error", rbErr)
+		}
 		return fmt.Errorf("mute participant track: %w", err)
 	}
 
@@ -334,11 +372,6 @@ func (s *RoomService) MuteParticipant(ctx context.Context, roomID, requesterSess
 	// Update participant metadata in LiveKit
 	if err := s.lkRoomService.UpdateParticipantMetadata(ctx, roomID, targetSessionID, string(metadataJSON)); err != nil {
 		return fmt.Errorf("update participant metadata: %w", err)
-	}
-
-	// Update muted_by_owner in database
-	if err := s.participants.SetMutedByOwner(ctx, targetSessionID, mute); err != nil {
-		return fmt.Errorf("set muted_by_owner: %w", err)
 	}
 
 	return nil
