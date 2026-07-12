@@ -81,10 +81,14 @@ export function useAudioDevices() {
 
     // Check permission state and enumerate devices on mount
     useEffect(() => {
+        const controller = new AbortController()
+        let removeListener: (() => void) | undefined
+
         const checkPermission = async () => {
             try {
                 if ('permissions' in navigator) {
                     const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+                    if (controller.signal.aborted) return
                     permissionRef.current = permission
                     setPermissionState(permission.state)
 
@@ -97,12 +101,14 @@ export function useAudioDevices() {
                     }
 
                     // Listen for permission changes
-                    permission.addEventListener('change', () => {
+                    const onChange = () => {
                         setPermissionState(permission.state)
                         if (permission.state === 'granted') {
                             enumerateDevices()
                         }
-                    })
+                    }
+                    permission.addEventListener('change', onChange)
+                    removeListener = () => permission.removeEventListener('change', onChange)
                 } else {
                     // Fallback: just try to enumerate
                     await enumerateDevices()
@@ -114,6 +120,10 @@ export function useAudioDevices() {
         }
 
         checkPermission()
+        return () => {
+            controller.abort()
+            removeListener?.()
+        }
     }, [enumerateDevices])
 
     // Listen for device changes (plug/unplug)

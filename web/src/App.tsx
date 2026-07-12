@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { NoiseSuppressionMode } from './types'
 import { useLiveKitRoom } from './hooks/useLiveKitRoom'
 import { useVoiceChat } from './hooks/useVoiceChat'
 import { useChat } from './hooks/useChat'
@@ -26,6 +25,7 @@ function App() {
   const streamSessionId = useStreamStore((s) => s.streamSessionId)
   const setWhipInfo = useStreamStore((s) => s.setWhipInfo)
   const setStreamState = useStreamStore((s) => s.setState)
+  const setStreamStartInfo = useStreamStore((s) => s.setStreamStartInfo)
   const setStreamSessionId = useStreamStore((s) => s.setStreamSessionId)
   const setStreamError = useStreamStore((s) => s.setError)
   const setRoomState = useRoomStore((s) => s.setState)
@@ -47,14 +47,9 @@ function App() {
   const [isRestoringSession, setIsRestoringSession] = useState(false)
   const restoredSessionRef = useRef(false)
 
-  const [audioProcessing, setAudioProcessing] = useState<{ noiseSuppressionMode: NoiseSuppressionMode; echoCancellation: boolean }>({ noiseSuppressionMode: 'krisp', echoCancellation: true })
+  const [audioProcessing, setAudioProcessing] = useState<{ noiseSuppression: boolean; echoCancellation: boolean }>({ noiseSuppression: true, echoCancellation: true })
 
-  // Handle Krisp fallback when not supported
-  const handleNoiseSuppressionFallback = useCallback((mode: NoiseSuppressionMode) => {
-    setAudioProcessing((prev) => ({ ...prev, noiseSuppressionMode: mode }))
-  }, [])
-
-  const { room, streamTrack, streamAudioTrack } = useLiveKitRoom(lkParams, audioProcessing, handleNoiseSuppressionFallback)
+  const { room, streamTrack, streamAudioTrack } = useLiveKitRoom(lkParams, audioProcessing)
 
   // Audio device management
   const {
@@ -69,9 +64,9 @@ function App() {
     micEnabled,
     isMutedByOwner,
     toggleMic,
-    noiseSuppressionMode,
+    noiseSuppression,
     echoCancellation,
-    setNoiseSuppressionMode,
+    setNoiseSuppression,
     setEchoCancellation,
   } = useVoiceChat(room, audioProcessing, selectedDeviceId)
   const { sendMessage, loadHistory, loadingHistory } = useChat(room)
@@ -87,8 +82,8 @@ function App() {
 
   // Sync audio processing options between hook and room
   useEffect(() => {
-    setAudioProcessing({ noiseSuppressionMode, echoCancellation })
-  }, [noiseSuppressionMode, echoCancellation])
+    setAudioProcessing({ noiseSuppression, echoCancellation })
+  }, [noiseSuppression, echoCancellation])
 
   // Load chat history when connected to room
   useEffect(() => {
@@ -236,15 +231,14 @@ function App() {
     try {
       setStreamState('PROVISIONING')
       const result = await api.startStream(roomId, participantId)
-      setStreamSessionId(result.stream_session_id)
-      setWhipInfo({ whip_url: result.whip_url, whip_bearer_token: result.whip_bearer_token })
+      setStreamStartInfo(result.stream_session_id, { whip_url: result.whip_url, whip_bearer_token: result.whip_bearer_token })
       setStreamState('AWAITING_STREAM')
     } catch (err) {
       logger.error('Start stream failed:', err)
       setStreamError(String(err))
       setStreamState('FAILED')
     }
-  }, [roomId, participantId, setStreamState, setStreamSessionId, setWhipInfo, setStreamError])
+  }, [roomId, participantId, setStreamState, setStreamStartInfo, setStreamError])
 
   const handleStopStream = useCallback(async () => {
     if (!roomId || !participantId || !streamSessionId) return
@@ -258,11 +252,12 @@ function App() {
   }, [roomId, participantId, streamSessionId, setStreamState, resetStream])
 
   const handleSendChat = useCallback(async (text: string) => {
-    const clientMsgId = crypto.randomUUID()
-    sendMessage(text)
+    const clientMsgId = await sendMessage(text)
+    if (!clientMsgId) return
     try {
       if (roomId && participantId) {
         await api.sendChatMessage(roomId, participantId, clientMsgId, text)
+        useChatStore.getState().markPersisted(clientMsgId)
       }
     } catch (err) {
       logger.error('Persist chat failed:', err)
@@ -365,9 +360,9 @@ function App() {
           micEnabled={micEnabled}
           onToggleMic={handleToggleMic}
           disabled={!isConnected}
-          noiseSuppressionMode={noiseSuppressionMode}
+          noiseSuppression={noiseSuppression}
           echoCancellation={echoCancellation}
-          onNoiseSuppressionModeChange={setNoiseSuppressionMode}
+          onNoiseSuppressionChange={setNoiseSuppression}
           onEchoCancellationChange={setEchoCancellation}
           audioDevices={inputDevices}
           selectedDeviceId={selectedDeviceId}

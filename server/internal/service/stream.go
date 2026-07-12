@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,6 +76,10 @@ func (s *StreamService) StartStream(ctx context.Context, roomID, participantSess
 
 	if err := s.rooms.SetActiveStream(ctx, roomID, &streamID); err != nil {
 		s.ingress.DeleteIngress(ctx, ingressResult.IngressID)
+		if endErr := s.streams.End(ctx, streamID); endErr != nil {
+			slog.Error("failed to clean up orphaned stream row after SetActiveStream failure",
+				"stream_id", streamID, "error", endErr)
+		}
 		return nil, fmt.Errorf("set active stream: %w", err)
 	}
 
@@ -104,7 +109,10 @@ func (s *StreamService) StopStream(ctx context.Context, roomID, participantSessi
 	}
 
 	if stream.IngressID != nil {
-		s.ingress.DeleteIngress(ctx, *stream.IngressID)
+		if err := s.ingress.DeleteIngress(ctx, *stream.IngressID); err != nil {
+			slog.Error("failed to delete ingress during stream stop", "ingress_id", *stream.IngressID, "error", err)
+			// continue with cleanup to avoid blocking the user
+		}
 	}
 
 	if err := s.streams.End(ctx, streamSessionID); err != nil {

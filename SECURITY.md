@@ -205,7 +205,7 @@ Direct dependencies:
 - `github.com/livekit/server-sdk-go` v1.1.8 — LiveKit server SDK
 - `modernc.org/sqlite` v1.46.1 — Pure-Go SQLite driver
 
-**npm (**`web/package.json`**):** 7 direct dependencies (React, LiveKit client, Zustand, Krisp noise filter, emoji-mart) + Vite toolchain devDeps. `package-lock.json` provides version pinning.
+**npm (**`web/package.json`**):** 6 direct dependencies (React, LiveKit client, Zustand, emoji-mart) + Vite toolchain devDeps. `package-lock.json` provides version pinning.
 
 **Known issues:**
 

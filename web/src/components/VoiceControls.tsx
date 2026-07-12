@@ -1,13 +1,12 @@
 import type { AudioDevice } from '../hooks/useAudioDevices'
-import type { NoiseSuppressionMode } from '../types'
 
 interface Props {
   micEnabled: boolean
   onToggleMic: () => void
   disabled: boolean
-  noiseSuppressionMode?: NoiseSuppressionMode
+  noiseSuppression?: boolean
   echoCancellation?: boolean
-  onNoiseSuppressionModeChange?: (mode: NoiseSuppressionMode) => void
+  onNoiseSuppressionChange?: (enabled: boolean) => void
   onEchoCancellationChange?: (enabled: boolean) => void
   // Microphone device selection
   audioDevices?: AudioDevice[]
@@ -43,19 +42,13 @@ function Checkbox({
   )
 }
 
-const modeLabels: Record<NoiseSuppressionMode, string> = {
-  krisp: 'Krisp',
-  standard: 'Standard',
-  off: 'Off',
-}
-
 export function VoiceControls({
   micEnabled,
   onToggleMic,
   disabled,
-  noiseSuppressionMode = 'krisp',
+  noiseSuppression = true,
   echoCancellation = true,
-  onNoiseSuppressionModeChange,
+  onNoiseSuppressionChange,
   onEchoCancellationChange,
   audioDevices = [],
   selectedDeviceId,
@@ -63,7 +56,7 @@ export function VoiceControls({
   devicesLoading = false,
   isMutedByOwner = false,
 }: Props) {
-  const showAudioOptions = onNoiseSuppressionModeChange || onEchoCancellationChange
+  const showAudioOptions = onNoiseSuppressionChange || onEchoCancellationChange
   const showDeviceSelector = onDeviceChange && audioDevices.length > 1
 
   // When muted by owner, the button is disabled and shows a different state
@@ -115,20 +108,13 @@ export function VoiceControls({
 
       {showAudioOptions && (
         <div className="flex items-center gap-3">
-          {onNoiseSuppressionModeChange && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-400">Noise Suppression:</span>
-              <select
-                value={noiseSuppressionMode}
-                onChange={(e) => onNoiseSuppressionModeChange(e.target.value as NoiseSuppressionMode)}
-                disabled={disabled || micEnabled}
-                className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="krisp">{modeLabels.krisp}</option>
-                <option value="standard">{modeLabels.standard}</option>
-                <option value="off">{modeLabels.off}</option>
-              </select>
-            </div>
+          {onNoiseSuppressionChange && (
+            <Checkbox
+              label="Noise Suppression"
+              checked={noiseSuppression}
+              onChange={onNoiseSuppressionChange}
+              disabled={disabled || micEnabled}
+            />
           )}
           {onEchoCancellationChange && (
             <Checkbox

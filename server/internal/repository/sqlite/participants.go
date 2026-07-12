@@ -57,9 +57,15 @@ func (r *ParticipantRepo) GetByID(ctx context.Context, id string) (*domain.Parti
 		return nil, fmt.Errorf("scan participant: %w", err)
 	}
 
-	p.JoinedAt, _ = time.Parse(time.RFC3339, joinedAt)
+	p.JoinedAt, err = time.Parse(time.RFC3339, joinedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse joined_at: %w", err)
+	}
 	if leftAt.Valid {
-		t, _ := time.Parse(time.RFC3339, leftAt.String)
+		t, err := time.Parse(time.RFC3339, leftAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse left_at: %w", err)
+		}
 		p.LeftAt = &t
 	}
 
@@ -114,7 +120,10 @@ func (r *ParticipantRepo) ListActiveByRoom(ctx context.Context, roomID string) (
 		if err := rows.Scan(&p.ParticipantSessionID, &p.RoomID, &p.DisplayName, &p.Role, &p.MutedByOwner, &joinedAt, &leftAt); err != nil {
 			return nil, fmt.Errorf("scan participant row: %w", err)
 		}
-		p.JoinedAt, _ = time.Parse(time.RFC3339, joinedAt)
+		p.JoinedAt, err = time.Parse(time.RFC3339, joinedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse joined_at in list: %w", err)
+		}
 		result = append(result, p)
 	}
 	return result, rows.Err()

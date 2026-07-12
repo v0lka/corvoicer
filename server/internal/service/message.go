@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,10 +44,12 @@ func (s *MessageService) SendMessage(ctx context.Context, roomID, participantSes
 		return nil, err
 	}
 
-	// Enforce max messages per room
+	// Enforce max messages per room (only when limit is exceeded)
 	count, err := s.messages.CountByRoom(ctx, roomID)
 	if err == nil && count > s.maxPerRoom {
-		s.messages.DeleteOlderThan(ctx, roomID, s.maxPerRoom)
+		if _, err := s.messages.DeleteOlderThan(ctx, roomID, s.maxPerRoom); err != nil {
+			slog.Error("failed to enforce message limit", "room_id", roomID, "error", err)
+		}
 	}
 
 	return &SendMessageResult{

@@ -1,31 +1,36 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Room, Track, LocalTrackPublication, RoomEvent } from 'livekit-client'
-import type { NoiseSuppressionMode } from '../types'
 import { useParticipantStore } from '../stores/participantStore'
 import { logger } from '../utils/logger'
 
 export interface VoiceChatOptions {
-  noiseSuppressionMode: NoiseSuppressionMode
+  noiseSuppression: boolean
   echoCancellation: boolean
 }
 
 export function useVoiceChat(
   room: Room | null,
-  options: VoiceChatOptions = { noiseSuppressionMode: 'krisp', echoCancellation: true },
+  options: VoiceChatOptions = { noiseSuppression: true, echoCancellation: true },
   deviceId?: string
 ) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [audioOptions, setAudioOptions] = useState<VoiceChatOptions>(options)
 
-  // Sync audioOptions from prop changes (e.g. Krisp fallback updates mode in parent)
+  // Ref to track latest micEnabled value to avoid stale closure in effect
+  const micEnabledRef = useRef(micEnabled)
+  useEffect(() => {
+    micEnabledRef.current = micEnabled
+  }, [micEnabled])
+
+  // Sync audioOptions from prop changes (e.g. parent updates mode)
   useEffect(() => {
     setAudioOptions((prev) => {
-      if (prev.noiseSuppressionMode === options.noiseSuppressionMode && prev.echoCancellation === options.echoCancellation) {
+      if (prev.noiseSuppression === options.noiseSuppression && prev.echoCancellation === options.echoCancellation) {
         return prev // no change needed, avoid unnecessary re-render
       }
       return { ...options }
     })
-  }, [options.noiseSuppressionMode, options.echoCancellation])
+  }, [options.noiseSuppression, options.echoCancellation])
   const [isMutedByOwner, setIsMutedByOwner] = useState(false)
   const participantId = room?.localParticipant?.identity
   const isMutedByOwnerFromStore = useParticipantStore(
@@ -66,8 +71,8 @@ export function useVoiceChat(
     }
   }, [room, deviceId, micEnabled, switchMicrophoneDevice])
 
-  const setNoiseSuppressionMode = useCallback((mode: NoiseSuppressionMode) => {
-    setAudioOptions((prev) => ({ ...prev, noiseSuppressionMode: mode }))
+  const setNoiseSuppression = useCallback((enabled: boolean) => {
+    setAudioOptions((prev) => ({ ...prev, noiseSuppression: enabled }))
   }, [])
 
   const setEchoCancellation = useCallback((enabled: boolean) => {
@@ -80,18 +85,6 @@ export function useVoiceChat(
       (pub) => pub.track?.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone
     ) as LocalTrackPublication | undefined
   }
-
-  // Apply audio processing options when they change
-  useEffect(() => {
-    if (!room) return
-
-    const micPub = getMicPublication()
-    if (micPub?.track && 'setProcessor' in micPub.track) {
-      // Note: LiveKit applies audio constraints at track creation time.
-      // To change them dynamically, we would need to restart the track.
-      // For now, options are applied when mic is toggled off/on.
-    }
-  }, [audioOptions, room])
 
   // Watch for mute by owner changes from the participant store
   useEffect(() => {
@@ -120,7 +113,7 @@ export function useVoiceChat(
         setIsMutedByOwner(mutedByOwner)
 
         // If muted by owner, force mic off
-        if (mutedByOwner && micEnabled) {
+        if (mutedByOwner && micEnabledRef.current) {
           room.localParticipant.setMicrophoneEnabled(false)
           setMicEnabled(false)
         }
@@ -135,16 +128,16 @@ export function useVoiceChat(
     return () => {
       room.off(RoomEvent.ParticipantMetadataChanged, handleMetadataChanged)
     }
-  }, [room, micEnabled])
+  }, [room])
 
   return {
     micEnabled,
     isMutedByOwner,
     toggleMic,
     getMicPublication,
-    noiseSuppressionMode: audioOptions.noiseSuppressionMode,
+    noiseSuppression: audioOptions.noiseSuppression,
     echoCancellation: audioOptions.echoCancellation,
-    setNoiseSuppressionMode,
+    setNoiseSuppression,
     setEchoCancellation,
   }
 }
